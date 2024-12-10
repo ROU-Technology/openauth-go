@@ -248,7 +248,7 @@ func (c *Client) Verify(schema SubjectSchema, accessToken string, options *Verif
 			}
 			defer resp.Body.Close()
 
-			var tokenResp TokenResponse
+			var tokenResp map[string]interface{}
 			if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 				return nil, fmt.Errorf("failed to decode token response: %w", err)
 			}
@@ -258,7 +258,7 @@ func (c *Client) Verify(schema SubjectSchema, accessToken string, options *Verif
 			}
 
 			// Verify the new access token
-			verifiedSubject, err := c.Verify(schema, tokenResp.AccessToken, nil)
+			verifiedSubject, err := c.Verify(schema, tokenResp["access_token"].(string), nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to verify new access token: %w", err)
 			}
@@ -268,8 +268,9 @@ func (c *Client) Verify(schema SubjectSchema, accessToken string, options *Verif
 				Access  string `json:"access"`
 				Refresh string `json:"refresh"`
 			}{
-				Access:  tokenResp.AccessToken,
-				Refresh: tokenResp.RefreshToken,
+
+				Access:  tokenResp["access_token"].(string),
+				Refresh: tokenResp["refresh_token"].(string),
 			}
 
 			return verifiedSubject, nil

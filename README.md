@@ -13,7 +13,7 @@ Go server-side SDK for [OpenAuth](https://github.com/openauthjs/openauth), provi
 ## Installation
 
 ```bash
-go get github.com/openauthjs/openauth-go
+go get github.com/ROU-Technology/openauth-go
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ package main
 
 import (
     "log"
-    "github.com/openauthjs/openauth-go"
+    "github.com/ROU-Technology/openauth-go"
 )
 
 func main() {

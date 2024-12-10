@@ -8,7 +8,6 @@ Go server-side SDK for [OpenAuth](https://github.com/openauthjs/openauth), provi
 - 📦 Efficient caching of JWKS and issuer metadata
 - 🔄 Automatic token refresh support
 - 🔒 Thread-safe implementation
-- 🚀 High performance with minimal dependencies
 
 ## Installation
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/rou/openauth-go"
+	"github.com/ROU-Technology/openauth-go"
 )
 
 func main() {

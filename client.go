@@ -1,3 +1,24 @@
+// Package openauth provides a Go client for verifying OpenAuth tokens.
+//
+// This package implements token verification and refresh functionality for tokens
+// issued by OpenAuth servers. It includes features like JWKS caching and automatic
+// token refresh.
+//
+// Example usage:
+//
+//	client := openauth.NewClient("client-id", "https://auth.example.com")
+//
+//	// Define subject validation
+//	subjects := openauth.SubjectSchema{
+//	    "user": func(properties interface{}) error {
+//	        return nil
+//	    },
+//	}
+//
+//	// Verify a token
+//	subject, err := client.Verify(subjects, accessToken, &openauth.VerifyOptions{
+//	    RefreshToken: refreshToken,
+//	})
 package openauth
 
 import (
@@ -14,28 +35,120 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// WellKnown represents the OAuth server's well-known configuration
-type WellKnown struct {
+// WellKnownConfig represents the OpenAuth server's well-known configuration
+type WellKnownConfig struct {
+	Issuer                string `json:"issuer"`
 	JWKsURI               string `json:"jwks_uri"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 }
 
-// Client represents an OAuth client
+// Client represents an OpenAuth client for token verification
 type Client struct {
 	clientID    string
 	issuer      string
 	httpClient  *http.Client
-	issuerCache sync.Map // string -> *WellKnown
-	jwksCache   sync.Map // string -> *jose.JSONWebKeySet
-	wellKnown   *WellKnown
+	issuerCache *sync.Map
+	jwksCache   *sync.Map
 }
 
-// getIssuer retrieves the well-known configuration for the issuer
-func (c *Client) getIssuer() (*WellKnown, error) {
+// NewClient creates a new OpenAuth client.
+//
+// The clientID is your application's client ID.
+// The issuer is the URL of your OpenAuth server (e.g., "https://auth.example.com").
+// If issuer is empty, it will try to use the OPENAUTH_ISSUER environment variable.
+func NewClient(clientID, issuer string) *Client {
+	if issuer == "" {
+		issuer = os.Getenv("OPENAUTH_ISSUER")
+	}
+	return &Client{
+		clientID:    clientID,
+		issuer:      issuer,
+		httpClient:  &http.Client{},
+		issuerCache: &sync.Map{},
+		jwksCache:   &sync.Map{},
+	}
+}
+
+// SubjectValidator is a function that validates subject properties
+type SubjectValidator func(interface{}) error
+
+// SubjectSchema is a map of subject types to their validators
+//
+// Example:
+//
+//	subjects := openauth.SubjectSchema{
+//	    "user": func(properties interface{}) error {
+//	        props, ok := properties.(map[string]interface{})
+//	        if !ok {
+//	            return errors.New("invalid properties type")
+//	        }
+//	        if _, ok := props["id"].(string); !ok {
+//	            return errors.New("missing or invalid id")
+//	        }
+//	        return nil
+//	    },
+//	}
+type SubjectSchema map[string]SubjectValidator
+
+// TokenClaims represents the expected structure of the JWT claims
+type TokenClaims struct {
+	jwt.RegisteredClaims
+	Mode       string      `json:"mode"`
+	Type       string      `json:"type"`
+	Properties interface{} `json:"properties"`
+}
+
+// VerifyOptions contains options for token verification
+type VerifyOptions struct {
+	// RefreshToken is an optional refresh token that will be used
+	// to obtain a new access token if the current one is expired
+	RefreshToken string
+}
+
+// Subject represents a verified token subject with optional tokens
+type Subject struct {
+	// Type is the subject type (e.g., "user", "service")
+	Type string `json:"type"`
+	// Properties contains the subject-specific properties
+	Properties interface{} `json:"properties"`
+	// Tokens contains the new access and refresh tokens if the token was refreshed
+	Tokens *struct {
+		Access  string `json:"access"`
+		Refresh string `json:"refresh"`
+	} `json:"tokens,omitempty"`
+}
+
+// OAuthError represents an OAuth error response
+type OAuthError struct {
+	Code    string `json:"error"`
+	Message string `json:"error_description"`
+}
+
+func (e *OAuthError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Code, e.Message)
+}
+
+// InvalidRefreshTokenError represents an error when refresh token is invalid
+type InvalidRefreshTokenError struct {
+	*OAuthError
+}
+
+// NewInvalidRefreshTokenError creates a new InvalidRefreshTokenError
+func NewInvalidRefreshTokenError() *InvalidRefreshTokenError {
+	return &InvalidRefreshTokenError{
+		&OAuthError{
+			Code:    "invalid_grant",
+			Message: "Invalid refresh token",
+		},
+	}
+}
+
+// getIssuer fetches and caches the OpenAuth server's well-known configuration
+func (c *Client) getIssuer() (*WellKnownConfig, error) {
 	// Check cache first
 	if cached, ok := c.issuerCache.Load(c.issuer); ok {
-		return cached.(*WellKnown), nil
+		return cached.(*WellKnownConfig), nil
 	}
 
 	// Fetch well-known configuration
@@ -45,7 +158,7 @@ func (c *Client) getIssuer() (*WellKnown, error) {
 	}
 	defer resp.Body.Close()
 
-	var wellKnown WellKnown
+	var wellKnown WellKnownConfig
 	if err := json.NewDecoder(resp.Body).Decode(&wellKnown); err != nil {
 		return nil, fmt.Errorf("failed to decode well-known config: %w", err)
 	}
@@ -55,7 +168,7 @@ func (c *Client) getIssuer() (*WellKnown, error) {
 	return &wellKnown, nil
 }
 
-// getJWKS retrieves the JSON Web Key Set from the issuer
+// getJWKS fetches and caches the JSON Web Key Set from the OpenAuth server
 func (c *Client) getJWKS() (*jose.JSONWebKeySet, error) {
 	wellKnown, err := c.getIssuer()
 	if err != nil {
@@ -84,111 +197,29 @@ func (c *Client) getJWKS() (*jose.JSONWebKeySet, error) {
 	return &jwks, nil
 }
 
-// NewClient creates a new OAuth client
-func NewClient(clientID string, opts ...Option) (*Client, error) {
-	client := &Client{
-		clientID:   clientID,
-		httpClient: http.DefaultClient,
-	}
-
-	for _, opt := range opts {
-		opt(client)
-	}
-
-	if client.issuer == "" {
-		client.issuer = os.Getenv("OPENAUTH_ISSUER")
-		if client.issuer == "" {
-			return nil, errors.New("no issuer provided")
-		}
-	}
-
-	// Fetch initial well-known configuration
-	if wellKnown, err := client.getIssuer(); err != nil {
-		return nil, err
-	} else {
-		client.wellKnown = wellKnown
-	}
-
-	return client, nil
-}
-
-// Option is a function that configures the client
-type Option func(*Client)
-
-// WithIssuer sets the issuer URL
-func WithIssuer(issuer string) Option {
-	return func(c *Client) {
-		c.issuer = issuer
-	}
-}
-
-// WithHTTPClient sets a custom HTTP client
-func WithHTTPClient(httpClient *http.Client) Option {
-	return func(c *Client) {
-		c.httpClient = httpClient
-	}
-}
-
-// OAuthError represents an OAuth error
-type OAuthError struct {
-	Code    string `json:"error"`
-	Message string `json:"error_description"`
-}
-
-func (e *OAuthError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Message)
-}
-
-// InvalidRefreshTokenError represents an error when refresh token is invalid
-type InvalidRefreshTokenError struct {
-	*OAuthError
-}
-
-func NewInvalidRefreshTokenError() *InvalidRefreshTokenError {
-	return &InvalidRefreshTokenError{
-		&OAuthError{
-			Code:    "invalid_grant",
-			Message: "Invalid refresh token",
-		},
-	}
-}
-
-// TokenResponse represents the response from the token endpoint
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-// VerifyOptions contains options for token verification
-type VerifyOptions struct {
-	RefreshToken string
-}
-
-// Subject represents a verified token subject with optional tokens
-type Subject struct {
-	Type       string      `json:"type"`
-	Properties interface{} `json:"properties"`
-	Tokens     *struct {
-		Access  string `json:"access"`
-		Refresh string `json:"refresh"`
-	} `json:"tokens,omitempty"`
-}
-
-// SubjectValidator is a function that validates subject properties
-type SubjectValidator func(properties interface{}) error
-
-// SubjectSchema is a map of subject types to their validators
-type SubjectSchema map[string]SubjectValidator
-
-// TokenClaims represents the expected structure of the JWT claims
-type TokenClaims struct {
-	jwt.RegisteredClaims
-	Mode       string      `json:"mode"`
-	Type       string      `json:"type"`
-	Properties interface{} `json:"properties"`
-}
-
 // Verify verifies an access token and returns the subject
+//
+// This method:
+// 1. Verifies the token's signature using the JWKS from the OpenAuth server
+// 2. Validates the token's claims (expiration, issuer)
+// 3. If the token is expired and a refresh token is provided, attempts to refresh
+// 4. Validates the subject properties using the provided schema
+//
+// Example:
+//
+//	subject, err := client.Verify(subjects, accessToken, &openauth.VerifyOptions{
+//	    RefreshToken: refreshToken,
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Verified subject type: %s\n", subject.Type)
+//
+//	// If token was refreshed, new tokens are available
+//	if subject.Tokens != nil {
+//	    newAccessToken := subject.Tokens.Access
+//	    newRefreshToken := subject.Tokens.Refresh
+//	}
 func (c *Client) Verify(schema SubjectSchema, accessToken string, options *VerifyOptions) (*Subject, error) {
 	// Get JWKS for token verification
 	keySet, err := c.getJWKS()

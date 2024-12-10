@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            git log --pretty=format:"* %s (%h)" > CHANGELOG.md
+          else
+            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD > CHANGELOG.md
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}

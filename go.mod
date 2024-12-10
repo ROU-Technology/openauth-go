@@ -1,4 +1,4 @@
-module github.com/rou/openauth-go
+module github.com/ROU-Technology/openauth-go
 
 go 1.21
 

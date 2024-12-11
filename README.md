@@ -17,6 +17,8 @@ go get github.com/ROU-Technology/openauth-go
 
 ## Quick Start
 
+### Basic Usage
+
 ```go
 package main
 
@@ -29,10 +31,27 @@ func main() {
     // Initialize the client with your OpenAuth issuer URL
     client := openauth.NewClient("your-client-id", "https://your-openauth-server.com")
 
-    // Define subject validation schema for your application's subjects
+    // Define subject validation schema
     subjects := openauth.SubjectSchema{
-        "user": func(properties interface{}) error {
-            // Add your validation logic for user subjects
+        "user": func(props interface{}) error {
+            // Type assert to map
+            properties, ok := props.(map[string]interface{})
+            if !ok {
+                return fmt.Errorf("expected map[string]interface{}, got %T", props)
+            }
+
+            // Check if email exists
+            email, ok := properties["email"].(string)
+            if !ok {
+                return fmt.Errorf("email is required and must be a string")
+            }
+
+            // Validate email format
+            emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+            if !emailRegex.MatchString(email) {
+                return fmt.Errorf("invalid email format")
+            }
+
             return nil
         },
     }
@@ -43,29 +62,130 @@ func main() {
         log.Fatal(err)
     }
 
-    // Use the verified subject
-    log.Printf("Verified subject type: %s", subject.Type)
+    // Access the validated user properties
+    properties := subject.Properties.(map[string]interface{})
+    email := properties["email"].(string)
+    fmt.Printf("Verified user with email: %s\n", email)
 }
 ```
 
-## Token Refresh
+### HTTP Server Example
 
-The SDK supports automatic refresh of expired OpenAuth tokens:
+Here's an example of implementing a token verification server:
 
 ```go
-subject, err := client.Verify(subjects, accessToken, &openauth.VerifyOptions{
-    RefreshToken: refreshToken,
-})
-if err != nil {
-    log.Fatal(err)
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "regexp"
+    "strings"
+
+    "github.com/ROU-Technology/openauth-go"
+)
+
+var client *openauth.Client
+var subjects openauth.SubjectSchema
+
+func init() {
+    // Initialize the OpenAuth client
+    client = openauth.NewClient("my-client", "https://auth.myserver.com")
+
+    // Define subject validation schema
+    subjects = openauth.SubjectSchema{
+        "user": func(props interface{}) error {
+            properties, ok := props.(map[string]interface{})
+            if !ok {
+                return fmt.Errorf("expected map[string]interface{}, got %T", props)
+            }
+
+            email, ok := properties["email"].(string)
+            if !ok {
+                return fmt.Errorf("email is required and must be a string")
+            }
+
+            emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+            if !emailRegex.MatchString(email) {
+                return fmt.Errorf("invalid email format")
+            }
+
+            return nil
+        },
+    }
 }
 
-// New tokens are available in the subject
-if subject.Tokens != nil {
-    newAccessToken := subject.Tokens.Access
-    newRefreshToken := subject.Tokens.Refresh
+func verifyHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    // Get token from Authorization header
+    authHeader := r.Header.Get("Authorization")
+    if !strings.HasPrefix(authHeader, "Bearer ") {
+        http.Error(w, "Invalid Authorization header", http.StatusUnauthorized)
+        return
+    }
+    token := strings.TrimPrefix(authHeader, "Bearer ")
+
+    // Get refresh token if present
+    var options *openauth.VerifyOptions
+    if refreshToken := r.Header.Get("X-Refresh-Token"); refreshToken != "" {
+        options = &openauth.VerifyOptions{
+            RefreshToken: refreshToken,
+        }
+    }
+
+    // Verify the token
+    subject, err := client.Verify(subjects, token, options)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusUnauthorized)
+        return
+    }
+
+    // Return the verified subject
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(subject)
+}
+
+func main() {
+    http.HandleFunc("/verify", verifyHandler)
+    log.Fatal(http.ListenAndServe(":8080", nil))
 }
 ```
+
+### Using the HTTP Server
+
+```bash
+# Verify a token
+curl -X POST http://localhost:8080/verify \
+  -H "Authorization: Bearer your_access_token"
+
+# Verify with refresh token
+curl -X POST http://localhost:8080/verify \
+  -H "Authorization: Bearer your_access_token" \
+  -H "X-Refresh-Token: your_refresh_token"
+```
+
+Example response:
+
+```json
+{
+  "type": "user",
+  "properties": {
+    "email": "user@example.com"
+  },
+  "tokens": {
+    "access": "new_access_token",
+    "refresh": "new_refresh_token"
+  }
+}
+```
+
+- Check the examples folder for more examples and usage scenarios. [Full Example](https://github.com/ROU-Technology/openauth-go/tree/main/examples)
 
 ## Features in Detail
 

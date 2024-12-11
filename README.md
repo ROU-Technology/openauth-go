@@ -185,7 +185,7 @@ Example response:
 }
 ```
 
-- Check the examples folder for more examples and usage scenarios. [Full Example](https://github.com/ROU-Technology/openauth-go/tree/main/examples)
+- Check the examples folder for more examples and usage scenarios. [Full Example](https://github.com/ROU-Technology/openauth-go/tree/main/example)
 
 ## Features in Detail
 

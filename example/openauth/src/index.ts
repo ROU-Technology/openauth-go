@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { authorizer, createSubjects } from "@openauthjs/openauth";
 import { MemoryStorage } from "@openauthjs/openauth/storage/memory";
 import { PasswordAdapter } from "@openauthjs/openauth/adapter/password";

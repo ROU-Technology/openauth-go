@@ -117,6 +117,9 @@ type Subject struct {
 		Access  string `json:"access"`
 		Refresh string `json:"refresh"`
 	} `json:"tokens,omitempty"`
+
+	// Aud is the token audience
+	Aud jwt.ClaimStrings `json:"aud"`
 }
 
 // OAuthError represents an OAuth error response
@@ -330,5 +333,6 @@ func (c *Client) Verify(schema SubjectSchema, accessToken string, options *Verif
 	return &Subject{
 		Type:       claims.Type,
 		Properties: claims.Properties,
+		Aud:        claims.Audience,
 	}, nil
 }

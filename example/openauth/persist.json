@@ -1,1 +1,25 @@
-[["email\u001fraheemolalekanusman84@gmail.com\u001fpassword",{"hash":"wISWnO0LkuYryQWX7/HQuHHxz2btAzHQyHXAlllU/yA=","salt":"2oxBSZ3bW2/fb5BuZty10Q==","N":16384,"r":8,"p":1}],["email\u001fraheemolalekanusman84@gmail.com\u001fsubject","user:45e283ed9a5aa82c"],["oauth:refresh\u001fuser:45e283ed9a5aa82c\u001f43370484-89f9-4db7-a1d5-0367fe8a5319",{"type":"user","properties":{"email":"raheemolalekanusman84@gmail.com"},"redirectURI":"http://localhost:5173/callback","clientID":"test-client"}]]
+[
+  [
+    "email\u001fraheemolalekanusman84@gmail.com\u001fpassword",
+    {
+      "hash": "wISWnO0LkuYryQWX7/HQuHHxz2btAzHQyHXAlllU/yA=",
+      "salt": "2oxBSZ3bW2/fb5BuZty10Q==",
+      "N": 16384,
+      "r": 8,
+      "p": 1
+    }
+  ],
+  [
+    "email\u001fraheemolalekanusman84@gmail.com\u001fsubject",
+    "user:45e283ed9a5aa82c"
+  ],
+  [
+    "oauth:refresh\u001fuser:45e283ed9a5aa82c\u001f43370484-89f9-4db7-a1d5-0367fe8a5319",
+    {
+      "type": "user",
+      "properties": { "email": "raheemolalekanusman84@gmail.com" },
+      "redirectURI": "http://localhost:5173/callback",
+      "clientID": "test-client"
+    }
+  ]
+]
